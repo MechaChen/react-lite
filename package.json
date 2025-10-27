@@ -1,0 +1,17 @@
+{
+  "name": "react-lite",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bunx babel src --out-dir dist --extensions '.js' --watch & bun --hot index.ts",
+    "build": "bunx babel src --out-dir dist --extensions '.js'",
+    "preview": "bun --hot index.ts"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.28.3",
+    "@babel/preset-react": "^7.28.5",
+    "bun-types": "^1.3.1",
+    "vite": "^7.1.7"
+  }
+}
