@@ -20,73 +20,25 @@ function createTextElement(text) {
   };
 }
 
-function render(element, container) {
-  const dom =
-    element.type === "TEXT_ELEMENT"
-      ? document.createTextNode("")
-      : document.createElement(element.type);
+let wipRoot = null;
+let nextUnitOfWork = null;
+let wipFiber = null;
+let deletions = [];
 
-  // append all properties, except children, to the current new HTML DOM node
-  const isProperty = (key) => key !== "children";
-  Object.keys(element.props)
-    .filter(isProperty)
-    .forEach((name) => {
-      dom[name] = element.props[name];
-    });
+// =============================== Render Phase ===============================
 
-  // append all children to the current new created dom node
-  element.props.children.forEach((child) => render(child, dom));
-
-  container.appendChild(dom);
-}
-
-const React = {
-  createElement,
-  render,
-};
-
-const element = (
-  <div id="foo">
-    <a>Hello World!</a>
-    <b />
-  </div>
-);
-
-const container = document.getElementById("root");
-React.render(element, container);
-
-function performUnitOfWork(fiber) {
-  const isFunctionComponent = fiber.type instanceof Function;
-
-  // according to the type is Function component or real DOM
-  if (isFunctionComponent) {
-    wipFiber = fiber;
-    const children = [fiber.type(fiber.props)];
-    reconcileChildren(fiber, children.flat());
-  } else {
-    if (!fiber.dom) fiber.dom = createDom(fiber);
-    reconcileChildren(fiber, fiber.props.children.flat());
-  }
-
-  // recursively handle the children from bottom, and to the left
-  if (fiber.child) {
-    return fiber.child;
-  }
-  let nextFiber = fiber;
-  while (nextFiber) {
-    if (nextFiber.sibling) {
-      return nextFiber.sibling;
-      nextFiber = nextFiber.parent;
-    }
-  }
-}
-
+// only handle the same level of the current fiber
+// <div>          // wipFiber
+//   <a />        // index 0 → 成為 child
+//   <b />        // index 1 → 成為 a 的 sibling
+//   <c />        // index 2 → 成為 b 的 sibling
+// </div>
 function reconcileChildren(wipFiber, elements) {
   let index = 0;
   let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
   let prevSibling = null;
 
-  while (index < element.length || oldFiber != null) {
+  while (index < elements.length || oldFiber != null) {
     const element = elements[index];
     let newFiber = null;
     const sameType = oldFiber && element && element.type === oldFiber.type;
@@ -116,23 +68,197 @@ function reconcileChildren(wipFiber, elements) {
       oldFiber.effectTag = "DELETION";
       deletions.push(oldFiber);
     }
+
+    if (oldFiber) {
+      oldFiber = oldFiber.sibling;
+    }
+
+    if (index === 0) {
+      wipFiber.child = newFiber;
+    } else if (element) {
+      prevSibling.sibling = newFiber;
+    }
+
+    prevSibling = newFiber;
+    index++;
   }
 }
 
-// create the dom by JavaScript recursively in the work in progress root
-let wipRoot = null;
-let nextUnitOfWork = null;
+function createDom(fiber) {
+  const dom =
+    fiber.type === "TEXT_ELEMENT"
+      ? document.createTextNode("")
+      : document.createElement(fiber.type);
 
-wipRoot = {
-  dom: container,
-  props: {
-    children: [<App />],
-  },
+  updateDom(dom, {}, fiber.props);
+
+  return dom;
+}
+
+function performUnitOfWork(fiber) {
+  const isFunctionComponent = fiber.type instanceof Function;
+
+  // according to the type is Function component or real DOM
+  if (isFunctionComponent) {
+    wipFiber = fiber;
+    // fiber.type is the function component, like function App({ name }) { return <div>Hello {name}!</div>; }
+    // and fiber.props is the props of the function component, like { name: "John" };
+    // so we can call the function component with the props, which is App({ name: 'John' })
+    const children = [fiber.type(fiber.props)];
+    reconcileChildren(fiber, children.flat());
+  } else {
+    if (!fiber.dom) fiber.dom = createDom(fiber);
+    reconcileChildren(fiber, fiber.props.children);
+  }
+
+  // recursively handle the children from child, and to the sibling
+  if (fiber.child) {
+    return fiber.child;
+  }
+
+  let nextFiber = fiber;
+  while (nextFiber) {
+    if (nextFiber.sibling) {
+      return nextFiber.sibling;
+    }
+    nextFiber = nextFiber.parent;
+  }
+  return null;
+}
+
+// =============================== Commit Phase ===============================
+
+const isEvent = (key) => key.startsWith("on");
+const isProperty = (key) => key !== "children" && !isEvent(key);
+const isKeyChangedFactory = (prev, next) => (key) => prev[key] !== next[key];
+const isKeyGoneFactory = (prev, next) => (key) => !(key in next);
+
+function updateDom(dom, prevProps, nextProps) {
+  // Remove old or changed event listeners, have to remove the callback as well.
+  Object.keys(prevProps)
+    .filter(isEvent)
+    .filter((prevEventProp) => {
+      const isPrevEventKeyGone = isKeyGoneFactory(
+        prevProps,
+        nextProps
+      )(prevEventProp);
+      const isPrevEventKeyChanged = isKeyChangedFactory(
+        prevProps,
+        nextProps
+      )(prevEventProp);
+      return isPrevEventKeyGone || isPrevEventKeyChanged;
+    })
+    .forEach((prevEventProp) => {
+      const prevEventName = prevEventProp.toLowerCase().substring(2);
+      const prevCventCallback = prevProps[prevEventProp];
+      dom.removeEventListener(prevEventName, prevCventCallback);
+    });
+
+  // Remove old properties
+  Object.keys(prevProps)
+    .filter(isProperty)
+    .filter(isKeyGoneFactory(prevProps, nextProps))
+    .forEach((prevProp) => {
+      dom[prevProp] = "";
+    });
+
+  // Set new or changed properties
+  Object.keys(nextProps)
+    .filter(isProperty)
+    .filter(isKeyChangedFactory(prevProps, nextProps))
+    .forEach((name) => {
+      dom[name] = nextProps[name];
+    });
+
+  // Add new event listeners
+  Object.keys(nextProps)
+    .filter(isEvent)
+    .filter(isKeyChangedFactory(prevProps, nextProps))
+    .forEach((name) => {
+      const eventType = name.toLowerCase().substring(2);
+      dom.addEventListener(eventType, nextProps[name]);
+    });
+}
+
+function commitDeletion(fiber, domParent) {
+  // if the fiber has a real dom, remove it from the parent
+  // otherwise, which might be a function component or fragment,
+  // recursively find the real dom and remove it
+  if (fiber.dom) {
+    domParent.removeChild(fiber.dom);
+  } else {
+    commitDeletion(fiber.child, domParent);
+  }
+}
+
+function commitWork(fiber) {
+  if (!fiber) return;
+
+  let domParentFiber = fiber.parent;
+  while (!domParentFiber.dom) {
+    domParentFiber = domParentFiber.parent;
+  }
+  const domParent = domParentFiber.dom;
+
+  if (fiber.effectTag === "PLACEMENT" && fiber.dom != null) {
+    domParent.appendChild(fiber.dom);
+  } else if (fiber.effectTag === "UPDATE" && fiber.dom != null) {
+    updateDom(fiber.dom, fiber.alternate.props, fiber.props);
+  } else if (fiber.effectTag === "DELETION") {
+    commitDeletion(fiber, domParent);
+  }
+
+  commitWork(fiber.child);
+  commitWork(fiber.sibling);
+}
+
+// create the dom by JavaScript recursively in the work in progress root
+function commitRoot() {
+  // remove the fibers first, then create/update the fiber dom
+  deletions.forEach(commitWork);
+  commitWork(wipRoot.child);
+  wipRoot = null;
+}
+
+function createRoot(container) {
+  return {
+    render(element) {
+      wipRoot = {
+        dom: container,
+        props: {
+          children: [element],
+        },
+        alternate: null,
+      };
+
+      deletions = [];
+      nextUnitOfWork = wipRoot;
+      while (nextUnitOfWork) {
+        nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+      }
+      // commit the the real DOM
+      commitRoot();
+    },
+  };
+}
+
+const React = {
+  createElement,
 };
 
-nextUnitOfWork = wipRoot;
-while (nextUnitOfWork) {
-  nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+// Example usage:
+function App() {
+  return (
+    <div>
+      <input />
+      <button onClick={() => alert("clicked")}>Add</button>
+      <ul>
+        <li>item 1</li>
+        <li>item 2</li>
+        <li>item 3</li>
+      </ul>
+    </div>
+  );
 }
-// commit the the real DOM
-commitWork(wipRoot.child);
+const rootContainer = document.getElementById("root");
+createRoot(rootContainer).render(<App />);

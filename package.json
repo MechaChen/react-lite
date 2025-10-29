@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "bunx babel src --out-dir dist --extensions '.js' --watch & bun --hot index.ts",
-    "build": "bunx babel src --out-dir dist --extensions '.js'",
+    "dev": "bunx babel src/main.js --out-dir dist --extensions '.js' --watch & bun --hot index.ts",
+    "build": "bunx babel src/main.js --out-dir dist --extensions '.js'",
     "preview": "bun --hot index.ts"
   },
   "devDependencies": {
