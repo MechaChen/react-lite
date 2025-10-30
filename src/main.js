@@ -33,6 +33,10 @@ let deletions = [];
 //   <b />        // index 1 → 成為 a 的 sibling
 //   <c />        // index 2 → 成為 b 的 sibling
 // </div>
+
+// What reconcileChildren function does:
+// 1. Mark operations needed for each child (UPDATE/PLACEMENT/DELETION)
+// 2. Link children as siblings, and link parent to the first child (index 0)
 function reconcileChildren(wipFiber, elements) {
   let index = 0;
   let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
@@ -95,6 +99,10 @@ function createDom(fiber) {
   return dom;
 }
 
+// What performUnitOfWork function does:
+// 1. reconcile the children by different fiber types
+// 1-1. the not function fiber will create the dom automatically
+// 2. Return the next unit of work from child to sibling, finally to parent
 function performUnitOfWork(fiber) {
   const isFunctionComponent = fiber.type instanceof Function;
 
@@ -223,6 +231,8 @@ function commitRoot() {
 function createRoot(container) {
   return {
     render(element) {
+      deletions = [];
+
       wipRoot = {
         dom: container,
         props: {
@@ -231,16 +241,26 @@ function createRoot(container) {
         alternate: null,
       };
 
-      deletions = [];
       nextUnitOfWork = wipRoot;
-      while (nextUnitOfWork) {
-        nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
-      }
-      // commit the the real DOM
-      commitRoot();
     },
   };
 }
+
+function workLoop(deadline) {
+  let shouldYield = false;
+  while (nextUnitOfWork && !shouldYield) {
+    nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+    shouldYield = deadline.timeRemaining() < 1;
+  }
+
+  if (!nextUnitOfWork && wipRoot) {
+    commitRoot();
+  }
+
+  requestIdleCallback(workLoop);
+}
+
+requestIdleCallback(workLoop);
 
 const React = {
   createElement,
