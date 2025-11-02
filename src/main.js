@@ -22,7 +22,9 @@ function createTextElement(text) {
 
 let wipRoot = null;
 let nextUnitOfWork = null;
+let currentRoot = null;
 let wipFiber = null;
+let hookIndex = null;
 let deletions = [];
 
 // =============================== Render Phase ===============================
@@ -109,6 +111,8 @@ function performUnitOfWork(fiber) {
   // according to the type is Function component or real DOM
   if (isFunctionComponent) {
     wipFiber = fiber;
+    wipFiber.hooks = [];
+    hookIndex = 0;
     // fiber.type is the function component, like function App({ name }) { return <div>Hello {name}!</div>; }
     // and fiber.props is the props of the function component, like { name: "John" };
     // so we can call the function component with the props, which is App({ name: 'John' })
@@ -225,6 +229,7 @@ function commitRoot() {
   // remove the fibers first, then create/update the fiber dom
   deletions.forEach(commitWork);
   commitWork(wipRoot.child);
+  currentRoot = wipRoot;
   wipRoot = null;
 }
 
@@ -262,22 +267,60 @@ function workLoop(deadline) {
 
 requestIdleCallback(workLoop);
 
+function useState(initial) {
+  const oldHook = wipFiber.alternate?.hooks?.[hookIndex];
+  const hook = {
+    state: oldHook ? oldHook.state : initial,
+    queue: [],
+  };
+
+  const actions = oldHook ? oldHook.queue : [];
+  actions.forEach((action) => {
+    hook.state = typeof action === "function" ? action(hook.state) : action;
+  });
+
+  const setState = (action) => {
+    hook.queue.push(action);
+    wipRoot = {
+      dom: currentRoot.dom,
+      props: currentRoot.props,
+      alternate: currentRoot,
+    };
+    nextUnitOfWork = wipRoot;
+    deletions = [];
+  };
+
+  wipFiber.hooks.push(hook);
+  hookIndex++;
+  return [hook.state, setState];
+}
+
 const React = {
   createElement,
+  useState,
 };
 
 // Example usage:
 function App() {
   return (
     <div>
-      <input />
-      <button onClick={() => alert("clicked")}>Add</button>
+      <Counter />
       <ul>
         <li>item 1</li>
         <li>item 2</li>
         <li>item 3</li>
       </ul>
     </div>
+  );
+}
+
+function Counter() {
+  const [count, setCount] = useState(0);
+  return (
+    <h2>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount((c) => c + 1)}>+ 1</button>
+    </h2>
   );
 }
 const rootContainer = document.getElementById("root");
