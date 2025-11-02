@@ -71,3 +71,12 @@ Commit phase
   - Store hooks in each Functional component's fiber (`wipFiber.hooks`)
   - Execute all pending actions from the previous render (from `oldHook.queue`) to update the state
   - Provide the `setState` function to queue updates and trigger the next render loop
+
+<br />
+<br />
+
+## Reference:
+
+- [🎦 BEGINNERS GUIDE to Building React in 30 minutes](https://www.youtube.com/watch?v=fKlt5GFQnVc)
+- [🎦 I built my own React in 10 minutes](https://www.youtube.com/watch?v=GBe5VwmgA4Q)
+- [📄 Build your own React](https://pomb.us/build-your-own-react/)
