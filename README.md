@@ -1,5 +1,13 @@
 # react-lite
 
+<p align="center">
+   <img
+      src="https://github.com/user-attachments/assets/4e23fcea-5a8c-40ef-924a-9c42a4fbdc46"
+      alt="How to build your own React?"
+      width="400"
+   />
+</p>
+
 ## React Life Cycle Process
 
 ### Initial render
